@@ -33,8 +33,9 @@ test('wiring: HTML の id に重複が無い', () => {
 test('wiring: 主要 CSS class が <style> に定義済み', () => {
   // severity / 状態バッジ / リスク / 各セル種別
   const required = [
-    'danger', 'warn', 'safe', 'muted', 'state', 'escaped', 'na',
-    'risk-low', 'risk-med', 'risk-high', 'basis', 'note', 'years', 'lim', 'no', 'api'
+    'danger', 'warn', 'safe', 'muted', 'badge', 'state', 'escaped', 'na',
+    'tier-core', 'tier-enhanced', 'tier-dev', 'dist-active', 'dist-planned', 'dist-candidate',
+    'risk-low', 'risk-med', 'risk-high', 'basis', 'note', 'years', 'deps', 'lim', 'no', 'api'
   ];
   for (const cls of required) {
     assert.ok(new RegExp('\\.' + cls + '\\b').test(style), `.${cls} の CSS 定義が無い`);

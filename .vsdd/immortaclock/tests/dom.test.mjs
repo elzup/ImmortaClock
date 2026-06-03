@@ -21,6 +21,8 @@ function makeDoc() {
     'lang', 'clock', 'effective', 'accuracy', 'footer',
     'stackTitle', 'stackHead', 'layers',
     'nondepTitle', 'nondepHead', 'nondep',
+    'featTitle', 'featHead', 'feat',
+    'distTitle', 'distHead', 'dist',
     'apiTitle', 'apiHead', 'api',
     'devTitle', 'devHead', 'dev'
   ];
@@ -57,12 +59,24 @@ test('PROP-UI-1: 依存中スタック行数 == active レイヤ数', () => {
   const activeCount = C.LAYERS.filter(C.isActive).length;
   assert.equal(doc._byId.layers.children.length, activeCount);
 });
-test('Task3/4/5: 脱却・API・開発時の各テーブルが行を持つ', () => {
+test('全テーブルが対応データ件数の行を持つ', () => {
   const { doc, C } = boot('ja-JP');
   const nonActive = C.LAYERS.filter((l) => !C.isActive(l)).length;
   assert.equal(doc._byId.nondep.children.length, nonActive, '非依存テーブル行数');
+  assert.equal(doc._byId.feat.children.length, C.FEATURES.length, '機能別寿命テーブル行数');
+  assert.equal(doc._byId.dist.children.length, C.DISTRIBUTION.length, '配布冗長化テーブル行数');
   assert.equal(doc._byId.api.children.length, C.APIS.length, 'API テーブル行数');
   assert.equal(doc._byId.dev.children.length, C.DEV_DEPS.length, '開発時テーブル行数');
+});
+test('REQ-UI-10: 機能別寿命表に核(時計)バッジが出る', () => {
+  const { doc } = boot('ja-JP');
+  assert.match(doc._byId.feat.textContent, /核/, '核 バッジ');
+  assert.match(doc._byId.feat.textContent, /時計表示/, '時計表示 行');
+});
+test('REQ-UI-11: 配布冗長化表に GitHub Pages と状態バッジが出る', () => {
+  const { doc } = boot('ja-JP');
+  assert.match(doc._byId.dist.textContent, /GitHub Pages/, 'GitHub Pages 行');
+  assert.match(doc._byId.dist.textContent, /稼働|予定|候補/, '状態バッジ');
 });
 
 // === PROP-UI-2: <10年(危険)は danger クラス (依存中スタック) ===
@@ -103,7 +117,7 @@ test('PROP-UI-3: 言語トグルで footer/stackTitle が切替わる', () => {
 test('REQ-I18N-3: 非ja ロケールは英語で起動', () => {
   const { doc } = boot('en-US');
   assert.match(doc._byId.lang.textContent, /日本語/); // en時はトグルに日本語と出る
-  assert.match(doc._byId.footer.textContent, /single HTML file/);
+  assert.match(doc._byId.footer.textContent, /[Ss]ingle HTML file/);
 });
 
 // === REQ-CLK-1: clock に時刻が描画される ===

@@ -170,8 +170,54 @@ test('design:used-apis: 各APIが since/risk(低中高)/普及/degrade を持つ
 });
 test('REQ-API-1: 必須API/機能を網羅 (Date/navigator/DOM/ES2015/script/system-ui/clamp/var/tabular-nums)', () => {
   const names = C.APIS.map((a) => a.api).join(' | ');
-  for (const need of ['Date', 'navigator.language', 'createElement', 'ES2015', 'script', 'system-ui', 'clamp()', 'var()', 'tabular-nums']) {
+  for (const need of ['Date', 'navigator.language', 'createElement', 'ES5', 'script', 'system-ui', 'clamp()', 'var()', 'tabular-nums']) {
     assert.ok(names.includes(need), `missing API row: ${need}`);
+  }
+});
+
+// === design:feature-longevity: 機能別の寿命・必須度 (表5) ===
+test('design:feature-longevity: tier(核/付加/開発時) と survives(二言語) を持つ', () => {
+  assert.ok(C.FEATURES.length >= 4, 'feature 行が十分にある');
+  const tiers = new Set(C.FEATURES.map((f) => f.tier));
+  assert.ok(tiers.has('core'), 'core(核) が存在');
+  for (const f of C.FEATURES) {
+    assert.ok(['core', 'enhanced', 'dev'].includes(f.tier), `${f.specId}.tier=${f.tier}`);
+    assert.ok(typeof f.specId === 'string' && f.specId.includes(':'), `${f.specId} は CEG ノード id`);
+    assert.equal(typeof f.deps, 'number', `${f.specId}.deps は数値`);
+    assert.ok(f.survives && f.survives.ja && f.survives.en, `${f.specId}.survives は ja/en`);
+  }
+});
+test('REQ-FL-1: 時計(spec:clock)が tier=core で唯一の核', () => {
+  const cores = C.FEATURES.filter((f) => f.tier === 'core');
+  assert.equal(cores.length, 1, '核は1つ');
+  assert.equal(cores[0].specId, 'spec:clock');
+});
+test('PROP-FL-2/REQ-FL-5: 核の依存数 <= 全 enhanced の依存数 (核は最も頑健)', () => {
+  const core = C.FEATURES.find((f) => f.tier === 'core');
+  const enhanced = C.FEATURES.filter((f) => f.tier === 'enhanced');
+  for (const e of enhanced) {
+    assert.ok(core.deps <= e.deps, `core(${core.deps}) <= ${e.specId}(${e.deps})`);
+  }
+});
+
+// === design:hosting-redundancy: 配布の冗長化 (表6) ===
+test('design:hosting-redundancy: 配布先が status/種別/運営/コスト を持つ', () => {
+  assert.ok(C.DISTRIBUTION.length >= 2, '配布先が複数ある');
+  const targets = C.DISTRIBUTION.map((d) => d.target).join(' | ');
+  // REQ-HOST-4: 当面の Pages 配布は GitHub Pages + Cloudflare Pages
+  assert.match(targets, /GitHub Pages/, 'GitHub Pages を含む');
+  assert.match(targets, /Cloudflare Pages/, 'Cloudflare Pages を含む');
+  for (const d of C.DISTRIBUTION) {
+    assert.ok(['active', 'planned', 'candidate'].includes(d.status), `${d.target}.status=${d.status}`);
+    for (const k of ['kind', 'operator', 'cost']) {
+      assert.ok(d[k] && d[k].ja && d[k].en, `${d.target}.${k} は ja/en`);
+    }
+  }
+});
+test('REQ-HOST-4: repo ミラーは無料・無制限のみ (GitLab/Codeberg)', () => {
+  const mirrors = C.DISTRIBUTION.filter((d) => /mirror|ミラー/.test(d.kind.ja + d.kind.en));
+  for (const m of mirrors) {
+    assert.match(m.cost.ja + m.cost.en, /無制限|unlimited/, `${m.target} は無料・無制限であるべき`);
   }
 });
 

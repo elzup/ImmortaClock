@@ -37,6 +37,16 @@ test('INV-SF-4: ES2020+ (?. / ??) を使わない', () => {
   assert.equal(/\?\?/.test(scriptBody), false, 'nullish coalescing ?? がある');
 });
 
+// === INV-SF-4: ES5 構文のみ (var/function。const/let/arrow/template literal 不使用) ===
+// 実行可能エンジン集合を ES2015 の上位集合に保ち、寿命を ≥ にする (redundancy 原理)。
+test('INV-SF-4: ES5 構文のみ (const/let/arrow/template literal を使わない)', () => {
+  const scriptBody = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+  assert.equal(/\bconst\s/.test(scriptBody), false, 'const がある (ES2015)');
+  assert.equal(/\blet\s/.test(scriptBody), false, 'let がある (ES2015)');
+  assert.equal(/=>/.test(scriptBody), false, 'arrow 関数がある (ES2015)');
+  assert.equal(/`/.test(scriptBody), false, 'template literal (バッククォート) がある (ES2015)');
+});
+
 // === INV-SF-4: ES2020識別子 globalThis を使っていない (ES2015以下を維持) ===
 test('INV-SF-4: globalThis を使わない (FIND-002)', () => {
   const scriptBody = html.match(/<script>([\s\S]*?)<\/script>/)[1];
