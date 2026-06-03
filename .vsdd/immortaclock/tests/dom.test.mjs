@@ -17,7 +17,13 @@ class FakeEl {
 }
 
 function makeDoc() {
-  const ids = ['lang', 'clock', 'effective', 'accuracy', 'tableTitle', 'thead', 'footer', 'layers'];
+  const ids = [
+    'lang', 'clock', 'effective', 'accuracy', 'footer',
+    'stackTitle', 'stackHead', 'layers',
+    'nondepTitle', 'nondepHead', 'nondep',
+    'apiTitle', 'apiHead', 'api',
+    'devTitle', 'devHead', 'dev'
+  ];
   const byId = {};
   ids.forEach((id) => { byId[id] = new FakeEl('div'); });
   return {
@@ -45,33 +51,51 @@ test.afterEach(() => {
   delete globalThis.document; delete globalThis.navigator; delete globalThis.setInterval;
 });
 
-// === PROP-UI-1: 行数 == レイヤ数 ===
-test('PROP-UI-1: 描画行数とレイヤ数が一致', () => {
+// === PROP-UI-1: 依存中スタックの行数 == active レイヤ数。4テーブルが描画される ===
+test('PROP-UI-1: 依存中スタック行数 == active レイヤ数', () => {
   const { doc, C } = boot('ja-JP');
-  assert.equal(doc._byId.layers.children.length, C.LAYERS.length);
+  const activeCount = C.LAYERS.filter(C.isActive).length;
+  assert.equal(doc._byId.layers.children.length, activeCount);
+});
+test('Task3/4/5: 脱却・API・開発時の各テーブルが行を持つ', () => {
+  const { doc, C } = boot('ja-JP');
+  const nonActive = C.LAYERS.filter((l) => !C.isActive(l)).length;
+  assert.equal(doc._byId.nondep.children.length, nonActive, '非依存テーブル行数');
+  assert.equal(doc._byId.api.children.length, C.APIS.length, 'API テーブル行数');
+  assert.equal(doc._byId.dev.children.length, C.DEV_DEPS.length, '開発時テーブル行数');
 });
 
-// === PROP-UI-2 / PROP-UI-4: severity と unused クラス ===
-test('PROP-UI-2/4: <10年は danger、appliesNow=false は unused クラス', () => {
+// === PROP-UI-2: <10年(危険)は danger クラス (依存中スタック) ===
+test('PROP-UI-2: 依存中の<10年は danger クラス', () => {
   const { doc, C } = boot('ja-JP');
+  const active = C.LAYERS.filter(C.isActive);
   const rows = doc._byId.layers.children;
-  C.LAYERS.forEach((layer, i) => {
-    const cls = rows[i].className;
+  active.forEach((layer, i) => {
     const y = C.computeYearsLeft(layer, new Date(Date.UTC(2026, 0, 1))).years;
-    if (isFinite(y) && y < 10) assert.match(cls, /danger/, `${layer.id} should be danger`);
-    if (!layer.appliesNow) assert.match(cls, /unused/, `${layer.id} should be unused`);
+    if (isFinite(y) && y < 10) assert.match(rows[i].className, /danger/, `${layer.id} should be danger`);
+  });
+});
+
+// === PROP-UI-4: 非依存行には状態バッジ(escaped/na)が付く ===
+test('PROP-UI-4: 非依存行に escaped/na 状態バッジが付与される', () => {
+  const { doc, C } = boot('ja-JP');
+  const nonActive = C.LAYERS.filter((l) => !C.isActive(l));
+  const rows = doc._byId.nondep.children;
+  nonActive.forEach((layer, i) => {
+    // 4列目(状態セル)内の span.state.<status>
+    assert.match(rows[i].textContent, /脱却|該当なし/, `${layer.id} に状態ラベル`);
   });
 });
 
 // === PROP-UI-3 / REQ-UI-4: 言語トグルで文言が ja<->en で変わる ===
-test('PROP-UI-3: 言語トグルで footer/title が切替わる', () => {
+test('PROP-UI-3: 言語トグルで footer/stackTitle が切替わる', () => {
   const { doc } = boot('ja-JP');
   const footerJa = doc._byId.footer.textContent;
-  const titleJa = doc._byId.tableTitle.textContent;
+  const titleJa = doc._byId.stackTitle.textContent;
   assert.match(doc._byId.lang.textContent, /EN/); // ja時はトグルにENと出る
   doc._byId.lang.click(); // → en へ
   assert.notEqual(doc._byId.footer.textContent, footerJa);
-  assert.notEqual(doc._byId.tableTitle.textContent, titleJa);
+  assert.notEqual(doc._byId.stackTitle.textContent, titleJa);
   assert.equal(doc._byId.lang.textContent, '日本語');
 });
 

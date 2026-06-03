@@ -21,6 +21,22 @@ test('PROP-SF-1: 外部 script/link/import/require/fetch を持たない', () =>
   assert.equal(/\bimportScripts\b/.test(scriptBody), false, 'importScripts がある');
 });
 
+// === REQ-UI-5: innerHTML 混入禁止 (textContent/createElement のみ) ===
+// 注: API リスク表の説明文に "innerHTML" の語が出るため、危険なのは「代入」のみを禁止する
+test('REQ-UI-5: innerHTML / outerHTML / insertAdjacentHTML への代入が無い', () => {
+  const scriptBody = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+  assert.equal(/\.innerHTML\s*=/.test(scriptBody), false, 'innerHTML への代入がある');
+  assert.equal(/\.outerHTML\s*=/.test(scriptBody), false, 'outerHTML への代入がある');
+  assert.equal(/insertAdjacentHTML/.test(scriptBody), false, 'insertAdjacentHTML を使用している');
+});
+
+// === INV-SF-4: ES2020+ 構文 (optional chaining / nullish) を使わない ===
+test('INV-SF-4: ES2020+ (?. / ??) を使わない', () => {
+  const scriptBody = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+  assert.equal(/\?\./.test(scriptBody), false, 'optional chaining ?. がある');
+  assert.equal(/\?\?/.test(scriptBody), false, 'nullish coalescing ?? がある');
+});
+
 // === INV-SF-4: ES2020識別子 globalThis を使っていない (ES2015以下を維持) ===
 test('INV-SF-4: globalThis を使わない (FIND-002)', () => {
   const scriptBody = html.match(/<script>([\s\S]*?)<\/script>/)[1];

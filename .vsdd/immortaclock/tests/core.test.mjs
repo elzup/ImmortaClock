@@ -54,10 +54,10 @@ test('PROP-LY-1: Layer id は一意', () => {
   const ids = C.LAYERS.map((l) => l.id);
   assert.equal(new Set(ids).size, ids.length);
 });
-test('PROP-LY-3: 全Layerが impact と appliesNow を持つ', () => {
+test('PROP-LY-3: 全Layerが impact と status(3値) を持つ', () => {
   for (const l of C.LAYERS) {
     assert.ok(['fatal', 'accuracy', 'cosmetic'].includes(l.impact), `${l.id}.impact`);
-    assert.equal(typeof l.appliesNow, 'boolean', `${l.id}.appliesNow`);
+    assert.ok(['active', 'escaped', 'na'].includes(l.status), `${l.id}.status`);
   }
 });
 test('REQ-LY-2: 必須レイヤを網羅', () => {
@@ -92,11 +92,25 @@ test('REQ-LV-7: 到来済み computable は 0 にクランプ', () => {
   const far = new Date(Date.UTC(3000, 0, 1));
   assert.equal(C.computeYearsLeft(layer('leap-second'), far).years, 0);
 });
-test('REQ-LV-3: appliesNow=false は basisKey=unused で反実仮想を出す', () => {
+// === Task2: 依存状態(status)軸 と 推定根拠(basisKey)軸 の分離 ===
+test('REQ-LV-3: 非依存(escaped/na)も反実仮想を出し、status と basis を分離する', () => {
   const now = new Date(Date.UTC(2026, 0, 1));
-  const r = C.computeYearsLeft(layer('framework'), now);
-  assert.equal(r.basisKey, 'unused');
-  assert.ok(r.years > 0, '反実仮想の年数が出る (該当なしで終わらせない)');
+  const fw = C.computeYearsLeft(layer('framework'), now);
+  assert.equal(fw.statusKey, 'escaped', 'framework は脱却');
+  assert.equal(fw.basisKey, 'heuristic', '推定根拠は kind 由来 (不使用ではない)');
+  assert.ok(fw.years > 0, '反実仮想の年数が出る (該当なしで終わらせない)');
+
+  const leap = C.computeYearsLeft(layer('leap-second'), now);
+  assert.equal(leap.statusKey, 'na', 'leap-second は該当なし');
+  assert.equal(leap.basisKey, 'computable', '推定根拠は computable');
+});
+test('REQ-LV-4: basisKey は計算可能/推定の2値のみ (不使用を混入しない)', () => {
+  for (const l of C.LAYERS) {
+    const r = C.computeYearsLeft(l, new Date(Date.UTC(2026, 0, 1)));
+    assert.ok(['computable', 'heuristic'].includes(r.basisKey), `${l.id}.basisKey=${r.basisKey}`);
+    assert.equal(r.basisKey, l.kind, `${l.id}: basisKey は kind と一致`);
+    assert.equal(r.statusKey, l.status, `${l.id}: statusKey は status と一致`);
+  }
 });
 
 // === REQ-LV-5/6 + PROP-LV-4: 描画寿命 / 精度寿命の律速 ===
@@ -113,10 +127,10 @@ test('REQ-LV-6: 精度寿命は tz(accuracy,使用中)が律速', () => {
   assert.ok(acc);
   assert.equal(acc.layer.id, 'tz');
 });
-test('PROP-LV-4: 描画寿命に unused/cosmetic/accuracy/low は寄与しない', () => {
+test('PROP-LV-4: 描画寿命に escaped/na・cosmetic・accuracy・low は寄与しない', () => {
   const now = new Date(Date.UTC(2026, 0, 1));
   const eff = C.effectiveLife(now);
-  // host(low), framework(unused), leap-second/2038/tls(cosmetic), tz(accuracy) はいずれも 30 未満を含むが除外される
+  // host(low), framework(escaped), leap-second/2038(na)・tls(escaped/cosmetic), tz(accuracy) は 30 未満を含むが除外される
   assert.equal(eff.years, 30);
 });
 test('PROP-LV-3: 描画寿命 <= 律速候補の全レイヤ (property)', () => {
@@ -126,10 +140,51 @@ test('PROP-LV-3: 描画寿命 <= 律速候補の全レイヤ (property)', () => 
     const eff = C.effectiveLife(now);
     if (!eff) continue;
     for (const l of C.LAYERS) {
-      if (!(l.impact === 'fatal' && l.appliesNow && !(l.kind === 'heuristic' && l.confidence === 'low'))) continue;
+      if (!(l.impact === 'fatal' && C.isActive(l) && !(l.kind === 'heuristic' && l.confidence === 'low'))) continue;
       const y = C.computeYearsLeft(l, now).years;
       if (y == null || !isFinite(y)) continue;
       assert.ok(eff.years <= y, `eff ${eff.years} <= ${l.id} ${y}`);
     }
+  }
+});
+
+// === Task3: 脱却テーブルが必須項目を含む ===
+test('Task3: escaped に framework / tls / 永続state が含まれる', () => {
+  const escaped = new Set(C.LAYERS.filter((l) => l.status === 'escaped').map((l) => l.id));
+  for (const id of ['framework', 'tls', 'persistent-state']) {
+    assert.ok(escaped.has(id), `escaped に ${id} が無い`);
+  }
+});
+
+// === Task4: 使用API レガシー化リスク表 (design:used-apis) ===
+test('design:used-apis: 各APIが since/risk(低中高)/普及/degrade を持つ', () => {
+  assert.ok(C.APIS.length >= 5, 'API 行が十分にある');
+  for (const a of C.APIS) {
+    assert.ok(typeof a.api === 'string' && a.api, 'api 名');
+    assert.ok(typeof a.since === 'string' && a.since, `${a.api}.since`);
+    assert.ok(['low', 'med', 'high'].includes(a.risk), `${a.api}.risk=${a.risk}`);
+    for (const k of ['adoption', 'degrade']) {
+      assert.ok(a[k] && a[k].ja && a[k].en, `${a.api}.${k} は ja/en を持つ`);
+    }
+  }
+});
+test('REQ-API-1: 必須API/機能を網羅 (Date/navigator/DOM/ES2015/script/system-ui/clamp/var/tabular-nums)', () => {
+  const names = C.APIS.map((a) => a.api).join(' | ');
+  for (const need of ['Date', 'navigator.language', 'createElement', 'ES2015', 'script', 'system-ui', 'clamp()', 'var()', 'tabular-nums']) {
+    assert.ok(names.includes(need), `missing API row: ${need}`);
+  }
+});
+
+// === Task5: 開発時依存表 (design:dev-deps) ===
+test('design:dev-deps: 開発時依存は配布物に非搭載、用途は二言語', () => {
+  assert.ok(C.DEV_DEPS.length >= 3, 'dev-dep 行が十分にある');
+  const tools = C.DEV_DEPS.map((d) => d.tool).join(' ');
+  // REQ-DEV-1: node:test / ceg.mjs / fake DOM / Node.js を明示
+  assert.match(tools, /node:test/, 'node:test を明示');
+  assert.match(tools, /ceg\.mjs/, 'ceg.mjs を明示');
+  assert.match(tools, /fake DOM/, 'fake DOM を明示');
+  assert.match(tools, /Node\.js/, 'Node.js を明示');
+  for (const d of C.DEV_DEPS) {
+    assert.ok(d.use && d.use.ja && d.use.en, `${d.tool}.use は ja/en を持つ`);
   }
 });
