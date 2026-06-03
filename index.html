@@ -14,7 +14,7 @@
     margin: 0; padding: 2rem 1rem; color: var(--fg); background: var(--bg);
     font-family: system-ui, -apple-system, sans-serif; line-height: 1.5;
   }
-  main { max-width: 860px; margin: 0 auto; }
+  main { max-width: 880px; margin: 0 auto; }
   .top { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; }
   h1 { font-size: 1rem; font-weight: 600; color: var(--muted); margin: 0 0 .25rem; letter-spacing: .05em; }
   #lang { font: inherit; cursor: pointer; border: 1px solid var(--line); background: #fff; border-radius: 6px; padding: .2rem .6rem; }
@@ -24,8 +24,9 @@
   #effective { margin: .5rem 0 .25rem; font-size: 1.05rem; }
   #effective strong { color: var(--safe); }
   #effective .lim { color: var(--warn); }
-  #accuracy { margin: 0 0 2rem; font-size: .9rem; color: var(--muted); }
-  h2 { font-size: .95rem; color: var(--muted); border-bottom: 1px solid var(--line); padding-bottom: .3rem; }
+  #accuracy { margin: 0 0 1rem; font-size: .9rem; color: var(--muted); }
+  section { margin-top: 1.75rem; }
+  h2 { font-size: .95rem; color: var(--muted); border-bottom: 1px solid var(--line); padding-bottom: .3rem; margin: 0 0 .25rem; }
   table { width: 100%; border-collapse: collapse; font-size: .9rem; }
   th, td { text-align: left; padding: .5rem .4rem; border-bottom: 1px solid var(--line); vertical-align: top; }
   th { color: var(--muted); font-weight: 600; }
@@ -33,10 +34,18 @@
   .danger td.years { color: var(--danger); }
   .warn td.years { color: var(--warn); }
   .safe td.years { color: var(--safe); }
-  tr.unused { opacity: .55; }
-  tr.unused td.years { font-style: italic; font-weight: 400; }
-  .basis { font-size: .75rem; color: var(--muted); }
+  tr.muted td { color: var(--muted); }
+  tr.muted td.years { font-style: italic; font-weight: 400; }
+  .basis { font-size: .8rem; color: var(--muted); }
   .note { font-size: .78rem; color: var(--muted); margin-top: .15rem; }
+  .state { font-size: .72rem; border: 1px solid var(--line); border-radius: 999px; padding: .05rem .55rem; white-space: nowrap; }
+  .state.escaped { color: var(--safe); border-color: var(--safe); }
+  .state.na { color: var(--muted); }
+  td.api { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .82rem; }
+  .risk-low { color: var(--safe); font-weight: 600; }
+  .risk-med { color: var(--warn); font-weight: 600; }
+  .risk-high { color: var(--danger); font-weight: 600; }
+  td.no { color: var(--muted); }
   footer { margin-top: 2rem; font-size: .75rem; color: var(--muted); }
 </style>
 </head>
@@ -49,11 +58,24 @@
   <p id="clock">--------------------</p>
   <p id="effective"></p>
   <p id="accuracy"></p>
-  <h2 id="tableTitle"></h2>
-  <table>
-    <thead><tr id="thead"></tr></thead>
-    <tbody id="layers"></tbody>
-  </table>
+
+  <section>
+    <h2 id="stackTitle"></h2>
+    <table><thead><tr id="stackHead"></tr></thead><tbody id="layers"></tbody></table>
+  </section>
+  <section>
+    <h2 id="nondepTitle"></h2>
+    <table><thead><tr id="nondepHead"></tr></thead><tbody id="nondep"></tbody></table>
+  </section>
+  <section>
+    <h2 id="apiTitle"></h2>
+    <table><thead><tr id="apiHead"></tr></thead><tbody id="api"></tbody></table>
+  </section>
+  <section>
+    <h2 id="devTitle"></h2>
+    <table><thead><tr id="devHead"></tr></thead><tbody id="dev"></tbody></table>
+  </section>
+
   <footer id="footer"></footer>
 </main>
 
@@ -63,49 +85,28 @@
 
   // ============================================================
   // 純粋ロジック層 (DOM 非依存・テスト対象)
+  //  ES2015 (const/let/arrow) を baseline とする。現存する古いエンジンの
+  //  後方互換は対象外。前方互換は web の back-compat 文化で恒久 (design:single-file)。
   // ============================================================
 
   // --- i18n (design:i18n) ---
-  function t(loc, lang) {
+  const t = (loc, lang) => {
     if (!loc) return "";
     if (loc[lang] != null) return loc[lang];
     if (loc.ja != null) return loc.ja;
     return loc.en != null ? loc.en : "";
-  }
-  function L(ja, en) { return { ja: ja, en: en }; }
-
-  var UI = {
-    tableTitle: L("依存スタックと寿命診断（脆い → 堅牢）", "Dependency stack & longevity (fragile → robust)"),
-    colLayer: L("依存レイヤ", "Layer"),
-    colKiller: L("何が壊すか", "What breaks it"),
-    colYears: L("あと何年", "Years left"),
-    colBasis: L("根拠", "Basis"),
-    effPrefix: L("描画が続く実効寿命: ", "Effective lifespan (keeps rendering): "),
-    effLim: L("律速: ", "limited by: "),
-    effNone: L("律速なし（依存はすべて恒久）", "No limiter (all dependencies effectively permanent)"),
-    accPrefix: L("正確な地域時刻の寿命: ", "Accurate local-time horizon: "),
-    accNone: L("精度の律速なし", "No accuracy limiter"),
-    basisComputable: L("計算可能", "computable"),
-    basisHeuristic: L("推定", "estimated"),
-    basisUnused: L("不使用", "not used"),
-    conf: { low: L("信頼度低", "low conf."), medium: L("信頼度中", "med conf."), high: L("信頼度高", "high conf.") },
-    footer: L(
-      "単一HTMLファイル・ビルド無し・外部依存無しで動作（file:// 可）。「あと何年」は計算可能な値と推定値を区別。不使用の行は『依存していた場合の目安』。",
-      "Runs as a single HTML file, no build, no external deps (works via file://). Years-left separates computable from estimated values. 'Not used' rows show the estimate if you depended on it."
-    )
   };
+  const L = (ja, en) => ({ ja: ja, en: en });
 
   // --- spec:clock: 時刻整形 (Date のみ。Temporal/Intl/polyfill 不使用) ---
-  function pad2(n) { return n < 10 ? "0" + n : String(n); }
-  function format(date) {
-    var y = date.getFullYear();
-    return y + "-" + pad2(date.getMonth() + 1) + "-" + pad2(date.getDate()) +
-      " " + pad2(date.getHours()) + ":" + pad2(date.getMinutes()) + ":" + pad2(date.getSeconds());
-  }
+  const pad2 = (n) => (n < 10 ? "0" + n : String(n));
+  const format = (date) =>
+    date.getFullYear() + "-" + pad2(date.getMonth() + 1) + "-" + pad2(date.getDate()) +
+    " " + pad2(date.getHours()) + ":" + pad2(date.getMinutes()) + ":" + pad2(date.getSeconds());
 
   // --- spec:longevity: 年数の人間可読化 ---
-  function stripZero(s) { return s.replace(/\.0$/, ""); }
-  function humanizeYears(n, lang) {
+  const stripZero = (s) => s.replace(/\.0$/, "");
+  const humanizeYears = (n, lang) => {
     if (!isFinite(n)) return "∞";
     if (lang === "en") {
       if (n >= 1000000) return stripZero((n / 1000000).toFixed(1)) + "M yr";
@@ -114,105 +115,199 @@
     }
     if (n >= 10000) return stripZero((n / 10000).toFixed(1)) + "万年";
     return n + "年";
-  }
+  };
+
+  // --- design:layers: JS Date 数値上限 (TZ 非依存) ---
+  const DATE_MAX_MS = 8640000000000000; // new Date(±8.64e15) が有効上限
+  const dateLimitYear = () => new Date(DATE_MAX_MS).getUTCFullYear(); // => 275760
+
+  // --- design:i18n: UI 文言 ---
+  const UI = {
+    // 表1: 依存中
+    stackTitle: L("依存スタックと寿命診断（脆い → 堅牢）", "Dependency stack & longevity (fragile → robust)"),
+    colLayer: L("依存レイヤ", "Layer"),
+    colKiller: L("何が壊すか", "What breaks it"),
+    colYears: L("あと何年", "Years left"),
+    colBasis: L("推定根拠", "Estimation basis"),
+    // 表2: 依存していない (脱却 / 該当なし)
+    nondepTitle: L("依存していない項目（脱却・非該当）", "Non-dependencies (escaped / not applicable)"),
+    colItem: L("項目", "Item"),
+    colAvoid: L("回避の手段 / 非該当の理由", "How avoided / why N/A"),
+    colCounter: L("もし依存／該当したら", "If it applied to you"),
+    colState: L("状態", "State"),
+    // 表3: 使用 API リスク
+    apiTitle: L("使用APIとレガシー化リスク", "Used APIs & obsolescence risk"),
+    colApi: L("API / 機能", "API / feature"),
+    colSince: L("導入時期", "Since"),
+    colAdoption: L("普及", "Adoption"),
+    colRisk: L("リスク", "Risk"),
+    colDegrade: L("degrade（劣化動作）", "Degrade"),
+    // 表4: 開発時依存
+    devTitle: L("開発時の依存（配布物には非搭載）", "Dev-time dependencies (not shipped)"),
+    colTool: L("ツール", "Tool"),
+    colUse: L("用途", "Purpose"),
+    colShipped: L("配布物に含む", "Shipped"),
+    // サマリ
+    effPrefix: L("描画が続く実効寿命: ", "Effective lifespan (keeps rendering): "),
+    effLim: L("律速: ", "limited by: "),
+    effNone: L("律速なし（依存はすべて恒久）", "No limiter (all dependencies effectively permanent)"),
+    accPrefix: L("正確な地域時刻の寿命: ", "Accurate local-time horizon: "),
+    accNone: L("精度の律速なし", "No accuracy limiter"),
+    // 値ラベル
+    basisComputable: L("計算可能", "computable"),
+    basisHeuristic: L("推定", "estimated"),
+    statusEscaped: L("脱却", "escaped"),
+    statusNa: L("該当なし", "not applicable"),
+    risk: { low: L("低", "low"), med: L("中", "med"), high: L("高", "high") },
+    conf: { low: L("信頼度低", "low conf."), medium: L("信頼度中", "med conf."), high: L("信頼度高", "high conf.") },
+    shippedNo: L("いいえ", "No"),
+    footer: L(
+      "単一HTMLファイル・ビルド無し・外部依存無しで動作（file:// 可）。表は『依存中／脱却・非該当／使用APIのリスク／開発時依存』に分離。「あと何年」は計算可能な値と推定値を区別。",
+      "Runs as a single HTML file, no build, no external deps (works via file://). Tables are split into active deps / escaped+N/A / API risk / dev-time deps. Years-left separates computable from estimated values."
+    )
+  };
 
   // --- design:layers: 依存レイヤの単一真実源 ---
-  var DATE_MAX_MS = 8640000000000000; // new Date(±8.64e15) が有効上限
-  function dateLimitYear() { return new Date(DATE_MAX_MS).getUTCFullYear(); } // TZ非依存 => 275760
-
-  var LAYERS = [
-    { id: "host", appliesNow: true, impact: "fatal", kind: "heuristic", estimatedYears: 5, confidence: "low",
+  //  status: 'active'(依存中) | 'escaped'(意図的に脱却) | 'na'(該当なし) … 依存状態の軸
+  //  kind:   'computable' | 'heuristic'                                … 推定根拠の軸 (status と直交)
+  //  impact: 'fatal'(描画停止) | 'accuracy'(動くが不正確) | 'cosmetic'(軽微)
+  const LAYERS = [
+    // --- 依存中 (active): 脆い → 堅牢 ---
+    { id: "host", status: "active", impact: "fatal", kind: "heuristic", estimatedYears: 5, confidence: "low",
       label: L("ホスティング / ファイル存在", "Hosting / file existence"),
       killer: L("課金切れ・業者終了・バックアップ喪失", "Billing lapse, provider shutdown, lost backups"),
       note: L("冗長化が鍵: オフライン複製・IPFS/Arweave・複数静的ホスト・archive.org を併用すれば、寿命は『最短』でなく『最長まで生き残るミラー』で決まる。",
              "Redundancy is key: with offline copies, IPFS/Arweave, multiple static hosts and archive.org, lifespan is set by the longest-surviving mirror, not the shortest.") },
-    { id: "framework", appliesNow: false, impact: "fatal", kind: "heuristic", estimatedYears: 5, confidence: "low",
-      label: L("モダンFW / ビルド / CDN", "Modern framework / build / CDN"),
-      killer: L("major破壊変更・パッケージ消失", "Breaking major releases, vanished packages"),
-      note: L("本実装は不使用。数値は依存した場合の目安。", "Not used here. The number is an estimate if you depended on it.") },
-    { id: "leap-second", appliesNow: true, impact: "cosmetic", kind: "computable", failureYear: function () { return 2035; },
-      label: L("うるう秒の廃止", "Abolition of leap seconds"),
-      killer: L("IERSによるうるう秒運用の終了", "IERS ending leap-second insertion"),
-      note: L("UTC定義の変更。壁掛け時計の表示には実質無影響（情報）。", "A change to UTC. Practically no effect on a wall clock (informational).") },
-    { id: "time-t-2038", appliesNow: false, impact: "cosmetic", kind: "computable", failureYear: function () { return 2038; },
-      label: L("符号付き32bit time_t (2038問題)", "Signed 32-bit time_t (Y2038)"),
-      killer: L("time_t の桁あふれ", "time_t overflow"),
-      note: L("JSは倍精度で時刻を保持するため本アプリは無関係。OS/組込み層の話（情報）。", "JS holds time as a double, so this app is unaffected. Concerns OS/embedded layers (informational).") },
-    { id: "tls", appliesNow: true, impact: "cosmetic", kind: "heuristic", estimatedYears: 15, confidence: "medium",
-      label: L("TLS / HTTPS", "TLS / HTTPS"),
-      killer: L("旧プロトコルの廃止", "Deprecation of old protocols"),
-      note: L("file:// では不要。HTTPに落ちても、読み込めれば描画は継続。", "Not needed for file://. Even falling back to HTTP, it keeps rendering once loaded.") },
-    { id: "browser", appliesNow: true, impact: "fatal", kind: "heuristic", estimatedYears: 30, confidence: "medium",
+    { id: "browser", status: "active", impact: "fatal", kind: "heuristic", estimatedYears: 30, confidence: "medium",
       label: L("ブラウザ / JSエンジン (vanilla ES)", "Browser / JS engine (vanilla ES)"),
       killer: L("後方互換の打ち切り（歴史上ほぼ前例なし）", "Dropping backward compatibility (almost no precedent)") },
-    { id: "tz", appliesNow: true, impact: "accuracy", kind: "heuristic", estimatedYears: 40, confidence: "medium",
+    { id: "tz", status: "active", impact: "accuracy", kind: "heuristic", estimatedYears: 40, confidence: "medium",
       label: L("IANA タイムゾーンDB", "IANA time zone DB"),
       killer: L("tz更新の停止・地政学的変更", "tz updates stopping; geopolitical changes"),
       note: L("更新が止まると地域時刻がズレる（動くが不正確化）。", "If updates stop, local time drifts (it runs but grows inaccurate).") },
-    { id: "time-api", appliesNow: true, impact: "fatal", kind: "heuristic", estimatedYears: 50, confidence: "high",
-      label: L("時刻API (Date / Temporal)", "Time API (Date / Temporal)"),
+    { id: "time-api", status: "active", impact: "fatal", kind: "heuristic", estimatedYears: 50, confidence: "high",
+      label: L("時刻API (Date)", "Time API (Date)"),
       killer: L("Date廃止（可能性ほぼ無し）", "Removal of Date (virtually impossible)"),
-      note: L("Dateは後方互換で恒久。Temporalはより新しくnative普及途上で、polyfillは依存を焼き込むため不使用。nativeにTemporalがあっても本実装はDateを維持。",
-             "Date is permanent via backward compat. Temporal is newer and still rolling out; a polyfill would bake in a dependency, so it is avoided. Even with native Temporal, this app keeps Date.") },
-    { id: "html", appliesNow: true, impact: "fatal", kind: "heuristic", estimatedYears: 50, confidence: "high",
+      note: L("Dateは後方互換で恒久。Temporalはpolyfillが依存を焼き込むため不使用、nativeに普及してもDateを維持。",
+             "Date is permanent via backward compat. Temporal is avoided (a polyfill would bake in a dependency); even once native, this app keeps Date.") },
+    { id: "html", status: "active", impact: "fatal", kind: "heuristic", estimatedYears: 50, confidence: "high",
       label: L("HTML / CSS 規格", "HTML / CSS standards"),
       killer: L("後方互換の文化が崩れる", "The culture of backward compatibility breaking") },
-    { id: "encoding", appliesNow: true, impact: "fatal", kind: "heuristic", estimatedYears: 300, confidence: "high",
+    { id: "encoding", status: "active", impact: "fatal", kind: "heuristic", estimatedYears: 300, confidence: "high",
       label: L("数値・文字 (IEEE754 / Unicode)", "Numbers & text (IEEE754 / Unicode)"),
       killer: L("事実上不変", "Effectively immutable") },
-    { id: "date-limit", appliesNow: true, impact: "fatal", kind: "computable", failureYear: dateLimitYear,
+    { id: "physical", status: "active", impact: "fatal", kind: "heuristic", estimatedYears: 300, confidence: "low",
+      label: L("電力・デバイス・文明", "Power, devices, civilization"),
+      killer: L("物理基盤の喪失", "Loss of the physical substrate"),
+      note: L("本ソフトの範囲外だが最終的な律速。The Long Now 的観点。", "Out of this software's scope, but the ultimate limiter — a Long Now perspective.") },
+    { id: "date-limit", status: "active", impact: "fatal", kind: "computable", failureYear: dateLimitYear,
       label: L("JS Date 数値上限", "JS Date numeric limit"),
       killer: L("new Date(8.64e15) を超過", "Exceeding new Date(8.64e15)"),
       note: L("倍精度ミリ秒の天井。西暦 " + dateLimitYear() + " 年まで表現可能。", "Ceiling of double-precision ms. Representable until year " + dateLimitYear() + ".") },
-    { id: "physical", appliesNow: true, impact: "fatal", kind: "heuristic", estimatedYears: 300, confidence: "low",
-      label: L("電力・デバイス・文明", "Power, devices, civilization"),
-      killer: L("物理基盤の喪失", "Loss of the physical substrate"),
-      note: L("本ソフトの範囲外だが最終的な律速。The Long Now 的観点。", "Out of this software's scope, but the ultimate limiter — a Long Now perspective.") }
+
+    // --- 脱却 (escaped): 依存し得たが意図的に回避 (反実仮想で年数を提示) ---
+    { id: "framework", status: "escaped", impact: "fatal", kind: "heuristic", estimatedYears: 5, confidence: "low",
+      label: L("モダンFW / ビルド / CDN", "Modern framework / build / CDN"),
+      killer: L("major破壊変更・パッケージ消失", "Breaking major releases, vanished packages"),
+      aside: L("単一HTMLに内包・ビルド無し・CDN参照無しで回避。", "Avoided: inlined in one HTML, no build step, no CDN reference.") },
+    { id: "tls", status: "escaped", impact: "cosmetic", kind: "heuristic", estimatedYears: 15, confidence: "medium",
+      label: L("TLS / HTTPS", "TLS / HTTPS"),
+      killer: L("旧プロトコルの廃止", "Deprecation of old protocols"),
+      aside: L("file:// では不要。HTTPに落ちても読み込めれば描画は継続。", "Not needed on file://; even falling back to HTTP it keeps rendering once loaded.") },
+    { id: "persistent-state", status: "escaped", impact: "cosmetic", kind: "heuristic", estimatedYears: 20, confidence: "medium",
+      label: L("永続ストレージ (localStorage/Cookie)", "Persistent storage (localStorage/Cookie)"),
+      killer: L("ストレージAPIの変更・消去・権限制限", "Storage API changes, clearing, permission restrictions"),
+      aside: L("ステートレス設計で不使用（INV-SF-5）。言語選択も揮発。", "Stateless by design (INV-SF-5); the language choice is volatile too.") },
+
+    // --- 該当なし (na): 外部の時刻問題だが本アプリには非該当 (情報) ---
+    { id: "leap-second", status: "na", impact: "cosmetic", kind: "computable", failureYear: () => 2035,
+      label: L("うるう秒の廃止", "Abolition of leap seconds"),
+      killer: L("IERSによるうるう秒運用の終了", "IERS ending leap-second insertion"),
+      aside: L("UTC定義の変更。壁掛け時計の表示には実質無影響。", "A change to UTC; practically no effect on a wall clock.") },
+    { id: "time-t-2038", status: "na", impact: "cosmetic", kind: "computable", failureYear: () => 2038,
+      label: L("符号付き32bit time_t (2038問題)", "Signed 32-bit time_t (Y2038)"),
+      killer: L("time_t の桁あふれ", "time_t overflow"),
+      aside: L("JSは倍精度で時刻を保持するため本アプリは無関係。OS/組込み層の話。", "JS holds time as a double, so this app is unaffected; concerns OS/embedded layers.") }
   ];
 
-  function clampYears(n) { return n < 0 ? 0 : n; }
+  // --- design:used-apis: 使用 API のレガシー化リスク評価 ---
+  const APIS = [
+    { api: "Date / setInterval", since: "ES1 / 1997", risk: "low",
+      adoption: L("全環境（言語コア）", "Universal (language core)"),
+      degrade: L("代替不要。除去は後方互換上ほぼ起きない。", "No fallback needed; removal is near-impossible by back-compat.") },
+    { api: "navigator.language", since: "1996", risk: "low",
+      adoption: L("全ブラウザ", "All browsers"),
+      degrade: L("取得不能なら英語へフォールバック。", "Falls back to English if unavailable.") },
+    { api: "createElement / textContent", since: "DOM L1–L2", risk: "low",
+      adoption: L("全ブラウザ（DOMコア）", "All browsers (DOM core)"),
+      degrade: L("代替不要。innerHTML 非使用でXSS面も無し。", "No fallback needed; innerHTML is avoided (no XSS surface).") },
+    { api: "ES2015 構文 (const/let/arrow)", since: "2015", risk: "low",
+      adoption: L("現行全ブラウザに定着", "Entrenched in all current browsers"),
+      degrade: L("2015以前のエンジンは対象外。前方互換で恒久。", "Pre-2015 engines out of scope; permanent going forward.") },
+    { api: "classic <script>（非module）", since: "1995", risk: "low",
+      adoption: L("全環境", "Universal"),
+      degrade: L("moduleはfile://がCORSで不可。classicを選択。", "Modules are blocked on file:// by CORS, so classic is chosen.") },
+    { api: "CSS system-ui フォント", since: "~2015", risk: "med",
+      adoption: L("広いが普遍でない", "Wide but not universal"),
+      degrade: L("-apple-system, sans-serif を後置（degradeあり）。", "Falls back to -apple-system, sans-serif (degrade).") },
+    { api: "CSS clamp()", since: "2020", risk: "med",
+      adoption: L("現行モダンブラウザ", "Modern browsers"),
+      degrade: L("前置の固定 font-size フォールバック（degradeあり）。", "Preceding fixed font-size fallback (degrade).") },
+    { api: "CSS var() カスタムプロパティ", since: "2016", risk: "med",
+      adoption: L("広い", "Wide"),
+      degrade: L("不対応でも既定色で可読（軽微）。", "Readable with default colors if unsupported (cosmetic).") },
+    { api: "font-variant-numeric: tabular-nums", since: "2015", risk: "low",
+      adoption: L("広い", "Wide"),
+      degrade: L("無くても桁が揃わないだけ（軽微）。", "Just loses digit alignment if absent (cosmetic).") }
+  ];
 
-  // REQ-LV-1/2/3/7: レイヤの残存年数
-  function computeYearsLeft(layer, now) {
-    var years;
+  // --- design:dev-deps: 開発時のみの依存 (配布物 index.html には非搭載) ---
+  const DEV_DEPS = [
+    { tool: "node:test / node:assert", use: L("テストランナーとアサーション（Node標準・追加install無し）", "Test runner & assertions (Node built-in, no install)") },
+    { tool: "ceg.mjs（自作）", use: L("仕様グラフの循環・依存欠落検出（CEG）", "Spec-graph cycle / missing-dep check (CEG)") },
+    { tool: "fake DOM（自作 / jsdom非依存）", use: L("DOM層テスト用の最小DOM（外部依存ゼロ）", "Minimal DOM for DOM-layer tests (zero external deps)") },
+    { tool: "Node.js", use: L("テスト実行環境のみ（配布物の動作には不要）", "Test execution runtime only (not needed to run the artifact)") }
+  ];
+
+  const clampYears = (n) => (n < 0 ? 0 : n);
+  const isActive = (layer) => layer.status === "active";
+
+  // REQ-LV-1/2/4: レイヤの残存年数。basisKey は推定根拠(kind)のみ、statusKey は依存状態。
+  const computeYearsLeft = (layer, now) => {
+    let years;
     if (layer.kind === "computable") {
-      var fy = layer.failureYear(now);
+      const fy = layer.failureYear(now);
       years = isFinite(fy) ? clampYears(fy - now.getUTCFullYear()) : Infinity;
     } else {
       years = layer.estimatedYears;
     }
-    var basisKey = !layer.appliesNow ? "unused" : (layer.kind === "computable" ? "computable" : "heuristic");
-    return { years: years, basisKey: basisKey, confidence: layer.confidence || null };
-  }
+    return { years: years, basisKey: layer.kind, statusKey: layer.status, confidence: layer.confidence || null };
+  };
 
   // 律速レイヤを述語で抽出 (最小残存年数)
-  function bindingFor(now, predicate) {
-    var best = null;
-    for (var i = 0; i < LAYERS.length; i++) {
-      var lay = LAYERS[i];
+  const bindingFor = (now, predicate) => {
+    let best = null;
+    for (let i = 0; i < LAYERS.length; i++) {
+      const lay = LAYERS[i];
       if (!predicate(lay)) continue;
-      var r = computeYearsLeft(lay, now);
+      const r = computeYearsLeft(lay, now);
       if (r.years == null || !isFinite(r.years)) continue;
       if (best == null || r.years < best.years) best = { years: r.years, layer: lay };
     }
     return best;
-  }
+  };
 
-  // REQ-LV-5: 描画が続く実効寿命 (fatal & 使用中 & low除外)
-  function effectiveLife(now) {
-    return bindingFor(now, function (l) {
-      return l.impact === "fatal" && l.appliesNow && !(l.kind === "heuristic" && l.confidence === "low");
-    });
-  }
-  // REQ-LV-6: 正確な地域時刻の寿命 (accuracy & 使用中)
-  function accuracyLife(now) {
-    return bindingFor(now, function (l) { return l.impact === "accuracy" && l.appliesNow; });
-  }
+  // REQ-LV-5: 描画が続く実効寿命 (fatal & 依存中 & low除外)
+  const effectiveLife = (now) =>
+    bindingFor(now, (l) => l.impact === "fatal" && isActive(l) && !(l.kind === "heuristic" && l.confidence === "low"));
+  // REQ-LV-6: 正確な地域時刻の寿命 (accuracy & 依存中)
+  const accuracyLife = (now) =>
+    bindingFor(now, (l) => l.impact === "accuracy" && isActive(l));
 
-  var api = {
+  const api = {
     t: t, pad2: pad2, format: format, humanizeYears: humanizeYears,
-    LAYERS: LAYERS, UI: UI, dateLimitYear: dateLimitYear,
-    computeYearsLeft: computeYearsLeft, effectiveLife: effectiveLife, accuracyLife: accuracyLife
+    LAYERS: LAYERS, APIS: APIS, DEV_DEPS: DEV_DEPS, UI: UI, dateLimitYear: dateLimitYear,
+    isActive: isActive, computeYearsLeft: computeYearsLeft, effectiveLife: effectiveLife, accuracyLife: accuracyLife
   };
   root.ImmortaClock = api;
 
@@ -221,108 +316,160 @@
   // ============================================================
   if (typeof document === "undefined") return;
 
-  var lang = (typeof navigator !== "undefined" && navigator.language &&
+  let lang = (typeof navigator !== "undefined" && navigator.language &&
     navigator.language.toLowerCase().indexOf("ja") === 0) ? "ja" : "en";
 
-  function severityClass(years) {
+  const severityClass = (years) => {
     if (years == null || !isFinite(years)) return "safe";
     if (years < 10) return "danger";
     if (years < 50) return "warn";
     return "safe";
-  }
-  function el(tag, text) {
-    var e = document.createElement(tag);
+  };
+  const el = (tag, text) => {
+    const e = document.createElement(tag);
     if (text != null) e.textContent = text;
     return e;
-  }
-  function yearsText(layer, r) {
-    var approx = layer.kind === "heuristic" ? (lang === "en" ? "~" : "約") : "";
+  };
+  const buildHead = (id, cols) => {
+    const head = document.getElementById(id);
+    head.textContent = "";
+    cols.forEach((c) => head.appendChild(el("th", t(c, lang))));
+  };
+  const yearsText = (layer, r) => {
+    const approx = layer.kind === "heuristic" ? (lang === "en" ? "~" : "約") : "";
     return approx + humanizeYears(r.years, lang);
-  }
-  function basisText(r) {
-    var key = r.basisKey === "computable" ? UI.basisComputable
-      : r.basisKey === "unused" ? UI.basisUnused : UI.basisHeuristic;
-    var s = t(key, lang);
-    if (r.confidence) s += "・" + t(UI.conf[r.confidence], lang);
+  };
+  const basisText = (r) => {
+    const key = r.basisKey === "computable" ? UI.basisComputable : UI.basisHeuristic;
+    let s = t(key, lang);
+    if (r.confidence) s += (lang === "en" ? " · " : "・") + t(UI.conf[r.confidence], lang);
     return s;
-  }
+  };
 
-  function renderTable() {
-    var now = new Date();
-    document.getElementById("tableTitle").textContent = t(UI.tableTitle, lang);
-
-    var thead = document.getElementById("thead");
-    thead.textContent = "";
-    [UI.colLayer, UI.colKiller, UI.colYears, UI.colBasis].forEach(function (c) {
-      thead.appendChild(el("th", t(c, lang)));
-    });
-
-    var tbody = document.getElementById("layers");
+  // 表1: 依存中スタック
+  const renderStack = () => {
+    const now = new Date();
+    document.getElementById("stackTitle").textContent = t(UI.stackTitle, lang);
+    buildHead("stackHead", [UI.colLayer, UI.colKiller, UI.colYears, UI.colBasis]);
+    const tbody = document.getElementById("layers");
     tbody.textContent = "";
-    LAYERS.forEach(function (layer) {
-      var r = computeYearsLeft(layer, now);
-      var tr = document.createElement("tr");
-      tr.className = severityClass(r.years) + (layer.appliesNow ? "" : " unused");
-
-      var tdName = el("td");
+    LAYERS.filter(isActive).forEach((layer) => {
+      const r = computeYearsLeft(layer, now);
+      const tr = document.createElement("tr");
+      tr.className = severityClass(r.years);
+      const tdName = el("td");
       tdName.appendChild(el("div", t(layer.label, lang)));
-      if (layer.note) { var n = el("div", t(layer.note, lang)); n.className = "note"; tdName.appendChild(n); }
+      if (layer.note) { const n = el("div", t(layer.note, lang)); n.className = "note"; tdName.appendChild(n); }
       tr.appendChild(tdName);
-
       tr.appendChild(el("td", t(layer.killer, lang)));
-
-      var tdYears = el("td", yearsText(layer, r));
-      tdYears.className = "years";
-      tr.appendChild(tdYears);
-
-      var tdBasis = el("td", basisText(r));
-      tdBasis.className = "basis";
-      tr.appendChild(tdBasis);
-
+      const tdYears = el("td", yearsText(layer, r)); tdYears.className = "years"; tr.appendChild(tdYears);
+      const tdBasis = el("td", basisText(r)); tdBasis.className = "basis"; tr.appendChild(tdBasis);
       tbody.appendChild(tr);
     });
-  }
+  };
 
-  function renderHorizons() {
-    var now = new Date();
-    var eff = effectiveLife(now);
-    var ep = document.getElementById("effective");
+  // 表2: 依存していない (脱却 / 該当なし)。反実仮想の年数 + 状態バッジ。
+  const renderNonDeps = () => {
+    const now = new Date();
+    document.getElementById("nondepTitle").textContent = t(UI.nondepTitle, lang);
+    buildHead("nondepHead", [UI.colItem, UI.colAvoid, UI.colCounter, UI.colState]);
+    const tbody = document.getElementById("nondep");
+    tbody.textContent = "";
+    LAYERS.filter((l) => !isActive(l)).forEach((layer) => {
+      const r = computeYearsLeft(layer, now);
+      const tr = document.createElement("tr");
+      tr.className = "muted";
+      tr.appendChild(el("td", t(layer.label, lang)));
+      tr.appendChild(el("td", t(layer.aside || layer.note || layer.killer, lang)));
+      const tdCounter = el("td", yearsText(layer, r)); tdCounter.className = "years"; tr.appendChild(tdCounter);
+      const tdState = el("td");
+      const badge = el("span", t(layer.status === "escaped" ? UI.statusEscaped : UI.statusNa, lang));
+      badge.className = "state " + layer.status;
+      tdState.appendChild(badge);
+      tr.appendChild(tdState);
+      tbody.appendChild(tr);
+    });
+  };
+
+  // 表3: 使用 API のレガシー化リスク
+  const renderApis = () => {
+    document.getElementById("apiTitle").textContent = t(UI.apiTitle, lang);
+    buildHead("apiHead", [UI.colApi, UI.colSince, UI.colAdoption, UI.colRisk, UI.colDegrade]);
+    const tbody = document.getElementById("api");
+    tbody.textContent = "";
+    APIS.forEach((a) => {
+      const tr = document.createElement("tr");
+      const tdApi = el("td", a.api); tdApi.className = "api"; tr.appendChild(tdApi);
+      tr.appendChild(el("td", a.since));
+      tr.appendChild(el("td", t(a.adoption, lang)));
+      const tdRisk = el("td", t(UI.risk[a.risk], lang)); tdRisk.className = "risk-" + a.risk; tr.appendChild(tdRisk);
+      tr.appendChild(el("td", t(a.degrade, lang)));
+      tbody.appendChild(tr);
+    });
+  };
+
+  // 表4: 開発時依存 (配布物には非搭載)
+  const renderDevDeps = () => {
+    document.getElementById("devTitle").textContent = t(UI.devTitle, lang);
+    buildHead("devHead", [UI.colTool, UI.colUse, UI.colShipped]);
+    const tbody = document.getElementById("dev");
+    tbody.textContent = "";
+    DEV_DEPS.forEach((d) => {
+      const tr = document.createElement("tr");
+      tr.appendChild(el("td", d.tool));
+      tr.appendChild(el("td", t(d.use, lang)));
+      const tdShipped = el("td", t(UI.shippedNo, lang)); tdShipped.className = "no"; tr.appendChild(tdShipped);
+      tbody.appendChild(tr);
+    });
+  };
+
+  // lang 非依存にならないよう括弧も言語別 (FIND-001: 英語UIに全角括弧を漏らさない)
+  const paren = (inner) => (lang === "en" ? " (" + inner + ")" : "（" + inner + "）");
+
+  const renderHorizons = () => {
+    const now = new Date();
+    const eff = effectiveLife(now);
+    const ep = document.getElementById("effective");
     ep.textContent = "";
-    if (!eff) { ep.appendChild(el("span", t(UI.effNone, lang))); }
-    else {
+    if (!eff) {
+      ep.appendChild(el("span", t(UI.effNone, lang)));
+    } else {
       ep.appendChild(el("span", t(UI.effPrefix, lang)));
       ep.appendChild(el("strong", (lang === "en" ? "~" : "約") + humanizeYears(eff.years, lang)));
-      var lim = el("span", "（" + t(UI.effLim, lang) + t(eff.layer.label, lang) + "）");
+      const lim = el("span", paren(t(UI.effLim, lang) + t(eff.layer.label, lang)));
       lim.className = "lim";
       ep.appendChild(lim);
     }
-    var acc = accuracyLife(now);
-    var ap = document.getElementById("accuracy");
+    const acc = accuracyLife(now);
+    const ap = document.getElementById("accuracy");
     ap.textContent = acc
       ? t(UI.accPrefix, lang) + (lang === "en" ? "~" : "約") + humanizeYears(acc.years, lang) +
-        "（" + t(UI.effLim, lang) + t(acc.layer.label, lang) + "）"
+        paren(t(UI.effLim, lang) + t(acc.layer.label, lang))
       : t(UI.accNone, lang);
-  }
+  };
 
-  function renderChrome() {
+  const renderChrome = () => {
     document.getElementById("lang").textContent = lang === "ja" ? "EN" : "日本語";
     document.getElementById("footer").textContent = t(UI.footer, lang);
     document.documentElement.setAttribute("lang", lang);
-  }
+  };
 
-  function renderAll() { renderChrome(); renderHorizons(); renderTable(); }
+  const renderAll = () => {
+    renderChrome(); renderHorizons();
+    renderStack(); renderNonDeps(); renderApis(); renderDevDeps();
+  };
 
-  function tick() { document.getElementById("clock").textContent = format(new Date()); }
+  const tick = () => { document.getElementById("clock").textContent = format(new Date()); };
 
-  function boot() {
-    var btn = document.getElementById("lang");
+  const boot = () => {
+    const btn = document.getElementById("lang");
     if (btn.addEventListener) {
-      btn.addEventListener("click", function () { lang = lang === "ja" ? "en" : "ja"; renderAll(); });
+      btn.addEventListener("click", () => { lang = lang === "ja" ? "en" : "ja"; renderAll(); });
     }
     tick();
     renderAll();
     setInterval(tick, 1000);
-  }
+  };
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", boot);
