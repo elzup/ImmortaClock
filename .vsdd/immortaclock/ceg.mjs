@@ -143,6 +143,24 @@ function topoSort(nodes) {
   return order.length === nodes.size ? order : null;
 }
 
+// 推移的な依存先(祖先)を辿る。依存数が少ない = 基盤が少ない = 機能として頑健。
+function transitiveDeps(nodes, startId) {
+  if (!nodes.has(startId)) return null;
+  const seen = new Set();
+  const order = [];
+  const queue = nodes.get(startId).deps.map((d) => ({ id: d, depth: 0 }));
+  while (queue.length) {
+    const { id, depth } = queue.shift();
+    if (seen.has(id)) continue;
+    seen.add(id);
+    order.push({ id, depth });
+    const node = nodes.get(id);
+    if (!node) continue;
+    for (const d of node.deps) if (!seen.has(d)) queue.push({ id: d, depth: depth + 1 });
+  }
+  return order;
+}
+
 function impactedBy(nodes, startId) {
   if (!nodes.has(startId)) return null;
   const reverse = new Map([...nodes.keys()].map((k) => [k, []]));
@@ -210,6 +228,26 @@ if (cmd === 'graph') {
     process.exit(1);
   }
   for (const id of order) console.log(id);
+} else if (cmd === 'deps') {
+  const target = args[1];
+  if (!target) {
+    console.error('usage: ceg.mjs deps <node-id>');
+    process.exit(2);
+  }
+  const result = transitiveDeps(nodes, target);
+  if (result === null) {
+    console.error(`unknown node: ${target}`);
+    process.exit(1);
+  }
+  console.log(`# transitive deps of "${target}" (${result.length}) — 少ないほど頑健`);
+  for (const { id, depth } of result) console.log(`${'  '.repeat(depth)}- ${id}`);
+} else if (cmd === 'rank') {
+  // 推移的依存数の昇順 = 頑健 → 脆弱。機能の寿命ランキング。
+  const ranked = [...nodes.keys()]
+    .map((id) => ({ id, n: transitiveDeps(nodes, id).length }))
+    .sort((a, b) => a.n - b.n || a.id.localeCompare(b.id));
+  console.log('# fragility rank (transitive deps; 少=頑健/長命, 多=脆弱)');
+  for (const { id, n } of ranked) console.log(`  ${String(n).padStart(2)}  ${id}`);
 } else if (cmd === 'impact') {
   const target = args[1];
   if (!target) {
@@ -224,6 +262,6 @@ if (cmd === 'graph') {
   console.log(`# impact of changing "${target}" (${result.length} downstream)`);
   for (const { id, depth } of result) console.log(`${'  '.repeat(depth)}- ${id}`);
 } else {
-  console.error(`usage: ceg.mjs <graph|validate|topo|impact <id>> [--specs <dir>]`);
+  console.error(`usage: ceg.mjs <graph|validate|topo|deps <id>|rank|impact <id>> [--specs <dir>]`);
   process.exit(2);
 }

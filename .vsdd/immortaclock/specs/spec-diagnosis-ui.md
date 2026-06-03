@@ -7,6 +7,8 @@ coherence:
     - design:i18n
     - design:used-apis
     - design:dev-deps
+    - design:feature-longevity
+    - design:hosting-redundancy
     - spec:longevity
     - spec:clock
 ---
@@ -21,6 +23,8 @@ coherence:
 2. **依存していない項目** (`status=escaped|na`): 状態バッジ + 反実仮想。列: 項目 / 回避手段・非該当理由 / もし依存していたら / 状態。
 3. **使用APIレガシー化リスク** (design:used-apis): 列: API / 導入時期 / 普及 / リスク / degrade。
 4. **開発時依存** (design:dev-deps): 配布物に非搭載を明示。列: ツール / 用途 / 配布物。
+5. **機能別の寿命・必須度** (design:feature-longevity): 列: 機能 / 必須度(核/付加/開発時) / 朽ちても時計は動くか / spec依存数。
+6. **配布の冗長化** (design:hosting-redundancy): 列: 配布先 / 種別 / 運営 / コスト / 状態(稼働|予定|候補)。
 
 ## 要件 (EARS)
 
@@ -33,6 +37,8 @@ coherence:
 - REQ-UI-7(Task3): THE SYSTEM SHALL `status!=='active'` のレイヤを表2に分離し、`脱却`/`該当なし` の状態バッジと「もし依存していたら約N年」の反実仮想を表示すること。
 - REQ-UI-8(Task4): THE SYSTEM SHALL 使用APIのレガシー化リスク表(表3)を描画すること。各行は 導入時期 / 普及 / リスク(低中高) / degrade有無 を持つ。
 - REQ-UI-9(Task5): THE SYSTEM SHALL 開発時のみの依存(表4)を描画し、いずれも配布物 `index.html` に**非搭載**である旨を明示すること。
+- REQ-UI-10: THE SYSTEM SHALL 機能別の寿命・必須度(表5, design:feature-longevity)を描画し、核(時計)/付加/開発時 の区別と「朽ちても時計は動くか」を示すこと。
+- REQ-UI-11: THE SYSTEM SHALL 配布の冗長化(表6, design:hosting-redundancy)を描画し、各配布先の 種別 / 運営 / コスト / 状態 を示すこと。
 
 ## 検証性質 (PROP)
 
