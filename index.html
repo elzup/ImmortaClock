@@ -39,6 +39,7 @@
   .basis { font-size: .8rem; color: var(--muted); }
   .note { font-size: .78rem; color: var(--muted); margin-top: .15rem; }
   .badge { font-size: .72rem; border: 1px solid var(--line); border-radius: 999px; padding: .05rem .55rem; white-space: nowrap; }
+  .state.active { color: var(--fg); }
   .state.escaped { color: var(--safe); border-color: var(--safe); }
   .state.na { color: var(--muted); }
   .tier-core { color: var(--safe); border-color: var(--safe); font-weight: 600; }
@@ -69,10 +70,6 @@
   <section>
     <h2 id="stackTitle"></h2>
     <table><thead><tr id="stackHead"></tr></thead><tbody id="layers"></tbody></table>
-  </section>
-  <section>
-    <h2 id="nondepTitle"></h2>
-    <table><thead><tr id="nondepHead"></tr></thead><tbody id="nondep"></tbody></table>
   </section>
   <section>
     <h2 id="featTitle"></h2>
@@ -140,18 +137,14 @@
 
   // --- design:i18n: UI 文言 ---
   var UI = {
-    // 表1: 依存中
-    stackTitle: L("依存スタックと寿命診断（脆い → 堅牢）", "Dependency stack & longevity (fragile → robust)"),
+    // 表1: 全レイヤ統合 (依存中→脱却→該当なし)
+    stackTitle: L("依存スタックと寿命診断（依存中 → 脱却 → 該当なし）", "Dependency stack & longevity (active → escaped → N/A)"),
     colLayer: L("依存レイヤ", "Layer"),
+    colState: L("状態", "State"),
     colKiller: L("何が壊すか", "What breaks it"),
     colYears: L("あと何年", "Years left"),
     colBasis: L("推定根拠", "Estimation basis"),
-    // 表2: 依存していない (脱却 / 該当なし)
-    nondepTitle: L("依存していない項目（脱却・非該当）", "Non-dependencies (escaped / not applicable)"),
-    colItem: L("項目", "Item"),
-    colAvoid: L("回避の手段 / 非該当の理由", "How avoided / why N/A"),
-    colCounter: L("もし依存／該当したら", "If it applied to you"),
-    colState: L("状態", "State"),
+    statusActive: L("依存中", "active"),
     // 表5: 機能別の寿命・必須度
     featTitle: L("機能別の寿命・必須度（最低限 時計が動けばよい）", "Per-feature longevity & criticality (clock is the irreducible core)"),
     colFeature: L("機能", "Feature"),
@@ -194,8 +187,8 @@
     conf: { low: L("信頼度低", "low conf."), medium: L("信頼度中", "med conf."), high: L("信頼度高", "high conf.") },
     shippedNo: L("いいえ", "No"),
     footer: L(
-      "単一HTMLファイル・ビルド無し・外部依存無しで動作（file:// 可）。ES5構文で実行基盤を最大化。表は依存中／脱却・非該当／機能別寿命／配布冗長化／APIリスク／開発時依存に分離。",
-      "Single HTML file, no build, no external deps (works via file://). ES5 syntax maximizes the runnable-engine set. Tables: active deps / escaped+N/A / per-feature longevity / distribution redundancy / API risk / dev-time deps."
+      "単一HTMLファイル・ビルド無し・外部依存無しで動作（file:// 可）。ES5構文で実行基盤を最大化。表は依存スタック（状態つき）／機能別寿命／配布冗長化／APIリスク／開発時依存。",
+      "Single HTML file, no build, no external deps (works via file://). ES5 syntax maximizes the runnable-engine set. Tables: dependency stack (with state) / per-feature longevity / distribution redundancy / API risk / dev-time deps."
     )
   };
 
@@ -426,45 +419,37 @@
   // lang 非依存にならないよう括弧も言語別 (英語UIに全角括弧を漏らさない)
   function paren(inner) { return lang === "en" ? " (" + inner + ")" : "（" + inner + "）"; }
 
-  // 表1: 依存中スタック
+  function statusLoc(status) {
+    return status === "active" ? UI.statusActive
+      : status === "escaped" ? UI.statusEscaped : UI.statusNa;
+  }
+
+  // 表1: 全レイヤ統合 (依存中→脱却→該当なし)。状態列で区別し、非activeは反実仮想を弱表示。
   function renderStack() {
     var now = new Date();
     document.getElementById("stackTitle").textContent = t(UI.stackTitle, lang);
-    buildHead("stackHead", [UI.colLayer, UI.colKiller, UI.colYears, UI.colBasis]);
+    buildHead("stackHead", [UI.colLayer, UI.colState, UI.colKiller, UI.colYears, UI.colBasis]);
     var tbody = document.getElementById("layers");
     tbody.textContent = "";
-    LAYERS.filter(isActive).forEach(function (layer) {
+    LAYERS.forEach(function (layer) {
+      var active = isActive(layer);
       var r = computeYearsLeft(layer, now);
       var tr = document.createElement("tr");
-      tr.className = severityClass(r.years);
+      tr.className = active ? severityClass(r.years) : "muted";
+
       var tdName = el("td");
       tdName.appendChild(el("div", t(layer.label, lang)));
-      if (layer.note) { var n = el("div", t(layer.note, lang)); n.className = "note"; tdName.appendChild(n); }
+      var sub = active ? layer.note : (layer.aside || layer.note);
+      if (sub) { var n = el("div", t(sub, lang)); n.className = "note"; tdName.appendChild(n); }
       tr.appendChild(tdName);
+
+      var tdState = el("td");
+      tdState.appendChild(badge(t(statusLoc(layer.status), lang), "state " + layer.status));
+      tr.appendChild(tdState);
+
       tr.appendChild(el("td", t(layer.killer, lang)));
       var tdYears = el("td", yearsText(layer, r)); tdYears.className = "years"; tr.appendChild(tdYears);
       var tdBasis = el("td", basisText(r)); tdBasis.className = "basis"; tr.appendChild(tdBasis);
-      tbody.appendChild(tr);
-    });
-  }
-
-  // 表2: 依存していない (脱却 / 該当なし)。反実仮想の年数 + 状態バッジ。
-  function renderNonDeps() {
-    var now = new Date();
-    document.getElementById("nondepTitle").textContent = t(UI.nondepTitle, lang);
-    buildHead("nondepHead", [UI.colItem, UI.colAvoid, UI.colCounter, UI.colState]);
-    var tbody = document.getElementById("nondep");
-    tbody.textContent = "";
-    LAYERS.filter(function (l) { return !isActive(l); }).forEach(function (layer) {
-      var r = computeYearsLeft(layer, now);
-      var tr = document.createElement("tr");
-      tr.className = "muted";
-      tr.appendChild(el("td", t(layer.label, lang)));
-      tr.appendChild(el("td", t(layer.aside || layer.note || layer.killer, lang)));
-      var tdCounter = el("td", yearsText(layer, r)); tdCounter.className = "years"; tr.appendChild(tdCounter);
-      var tdState = el("td");
-      tdState.appendChild(badge(t(layer.status === "escaped" ? UI.statusEscaped : UI.statusNa, lang), "state " + layer.status));
-      tr.appendChild(tdState);
       tbody.appendChild(tr);
     });
   }
@@ -568,7 +553,7 @@
 
   function renderAll() {
     renderChrome(); renderHorizons();
-    renderStack(); renderNonDeps(); renderFeatures(); renderDistribution(); renderApis(); renderDevDeps();
+    renderStack(); renderFeatures(); renderDistribution(); renderApis(); renderDevDeps();
   }
 
   function tick() { document.getElementById("clock").textContent = format(new Date()); }

@@ -20,7 +20,6 @@ function makeDoc() {
   const ids = [
     'lang', 'clock', 'effective', 'accuracy', 'footer',
     'stackTitle', 'stackHead', 'layers',
-    'nondepTitle', 'nondepHead', 'nondep',
     'featTitle', 'featHead', 'feat',
     'distTitle', 'distHead', 'dist',
     'apiTitle', 'apiHead', 'api',
@@ -53,16 +52,13 @@ test.afterEach(() => {
   delete globalThis.document; delete globalThis.navigator; delete globalThis.setInterval;
 });
 
-// === PROP-UI-1: 依存中スタックの行数 == active レイヤ数。4テーブルが描画される ===
-test('PROP-UI-1: 依存中スタック行数 == active レイヤ数', () => {
+// === PROP-UI-1: 統合表の行数 == 全レイヤ数。各テーブルが描画される ===
+test('PROP-UI-1: 統合表の行数 == 全レイヤ数', () => {
   const { doc, C } = boot('ja-JP');
-  const activeCount = C.LAYERS.filter(C.isActive).length;
-  assert.equal(doc._byId.layers.children.length, activeCount);
+  assert.equal(doc._byId.layers.children.length, C.LAYERS.length);
 });
 test('全テーブルが対応データ件数の行を持つ', () => {
   const { doc, C } = boot('ja-JP');
-  const nonActive = C.LAYERS.filter((l) => !C.isActive(l)).length;
-  assert.equal(doc._byId.nondep.children.length, nonActive, '非依存テーブル行数');
   assert.equal(doc._byId.feat.children.length, C.FEATURES.length, '機能別寿命テーブル行数');
   assert.equal(doc._byId.dist.children.length, C.DISTRIBUTION.length, '配布冗長化テーブル行数');
   assert.equal(doc._byId.api.children.length, C.APIS.length, 'API テーブル行数');
@@ -79,26 +75,24 @@ test('REQ-UI-11: 配布冗長化表に GitHub Pages と状態バッジが出る'
   assert.match(doc._byId.dist.textContent, /稼働|予定|候補/, '状態バッジ');
 });
 
-// === PROP-UI-2: <10年(危険)は danger クラス (依存中スタック) ===
-test('PROP-UI-2: 依存中の<10年は danger クラス', () => {
+// === PROP-UI-2: active の<10年は danger クラス (統合表) ===
+test('PROP-UI-2: active の<10年は danger クラス', () => {
   const { doc, C } = boot('ja-JP');
-  const active = C.LAYERS.filter(C.isActive);
   const rows = doc._byId.layers.children;
-  active.forEach((layer, i) => {
+  C.LAYERS.forEach((layer, i) => {
+    if (!C.isActive(layer)) return;
     const y = C.computeYearsLeft(layer, new Date(Date.UTC(2026, 0, 1))).years;
     if (isFinite(y) && y < 10) assert.match(rows[i].className, /danger/, `${layer.id} should be danger`);
   });
 });
 
-// === PROP-UI-4: 非依存行には状態バッジ(escaped/na)が付く ===
-test('PROP-UI-4: 非依存行に escaped/na 状態バッジが付与される', () => {
-  const { doc, C } = boot('ja-JP');
-  const nonActive = C.LAYERS.filter((l) => !C.isActive(l));
-  const rows = doc._byId.nondep.children;
-  nonActive.forEach((layer, i) => {
-    // 4列目(状態セル)内の span.state.<status>
-    assert.match(rows[i].textContent, /脱却|該当なし/, `${layer.id} に状態ラベル`);
-  });
+// === PROP-UI-4: 統合表に 依存中/脱却/該当なし の状態バッジが出る ===
+test('PROP-UI-4: 統合表に 依存中/脱却/該当なし の状態バッジが付与される', () => {
+  const { doc } = boot('ja-JP');
+  const txt = doc._byId.layers.textContent;
+  assert.match(txt, /依存中/, '依存中 バッジ');
+  assert.match(txt, /脱却/, '脱却 バッジ');
+  assert.match(txt, /該当なし/, '該当なし バッジ');
 });
 
 // === PROP-UI-3 / REQ-UI-4: 言語トグルで文言が ja<->en で変わる ===
