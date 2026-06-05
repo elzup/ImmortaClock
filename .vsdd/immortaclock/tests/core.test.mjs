@@ -204,14 +204,22 @@ test('PROP-FL-2/REQ-FL-5: 核の依存数 <= 全 enhanced の依存数 (核は�
 test('design:hosting-redundancy: 配布先が status/種別/運営/コスト を持つ', () => {
   assert.ok(C.DISTRIBUTION.length >= 2, '配布先が複数ある');
   const targets = C.DISTRIBUTION.map((d) => d.target).join(' | ');
-  // REQ-HOST-4: 当面の Pages 配布は GitHub Pages + Cloudflare Pages
+  // REQ-HOST-4: 稼働中の配信は GitHub Pages + Cloudflare + GitLab Pages
   assert.match(targets, /GitHub Pages/, 'GitHub Pages を含む');
-  assert.match(targets, /Cloudflare Pages/, 'Cloudflare Pages を含む');
+  assert.match(targets, /Cloudflare/, 'Cloudflare を含む');
+  assert.match(targets, /GitLab/, 'GitLab を含む');
   for (const d of C.DISTRIBUTION) {
     assert.ok(['active', 'planned', 'candidate'].includes(d.status), `${d.target}.status=${d.status}`);
     for (const k of ['kind', 'operator', 'cost']) {
       assert.ok(d[k] && d[k].ja && d[k].en, `${d.target}.${k} は ja/en`);
     }
+  }
+});
+test('PROP-HOST-1: 稼働(active)配布先は url を持ち 2 つ以上 (REQ-HOST-5)', () => {
+  const active = C.DISTRIBUTION.filter((d) => d.status === 'active');
+  assert.ok(active.length >= 2, `稼働先が 2 つ以上 (実際: ${active.length})`);
+  for (const d of active) {
+    assert.ok(typeof d.url === 'string' && /^https:\/\//.test(d.url), `${d.target}.url は https URL`);
   }
 });
 test('REQ-HOST-4: repo ミラーは無料・無制限のみ (GitLab/Codeberg)', () => {

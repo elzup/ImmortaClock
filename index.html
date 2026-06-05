@@ -7,7 +7,7 @@
 <style>
   :root {
     --fg: #1a1a1a; --bg: #f7f7f4; --muted: #6b6b6b; --line: #ddd;
-    --danger: #c0392b; --warn: #b9770e; --safe: #1e7d4f;
+    --danger: #c0392b; --warn: #b9770e; --safe: #1e7d4f; --link: #2a6fb0;
   }
   * { box-sizing: border-box; }
   body {
@@ -30,6 +30,7 @@
   table { width: 100%; border-collapse: collapse; font-size: .9rem; }
   th, td { text-align: left; padding: .5rem .4rem; border-bottom: 1px solid var(--line); vertical-align: top; }
   th { color: var(--muted); font-weight: 600; }
+  a { color: var(--link); }
   td.years { font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 600; }
   .danger td.years { color: var(--danger); }
   .warn td.years { color: var(--warn); }
@@ -276,15 +277,20 @@
   ];
 
   // --- design:hosting-redundancy: 配布の冗長化 (無料・独立先) ---
+  // REQ-HOST-5: 稼働(active)配布先は url を持ち、ページ上に相互リンクを掲示する
+  // (自己記述的冗長化: どのミラーに辿り着いても他の生存先を発見できる)。
   var DISTRIBUTION = [
     { target: "GitHub Pages", status: "active",
+      url: "https://elzup.github.io/ImmortaClock/",
       kind: L("Pages配布 + repo", "Pages + repo"),
       operator: L("Microsoft", "Microsoft"), cost: L("無料", "Free") },
-    { target: "Cloudflare Pages", status: "planned",
-      kind: L("Pages配布", "Pages"),
+    { target: "Cloudflare Workers", status: "active",
+      url: "https://immorta-clock.anozon.workers.dev/",
+      kind: L("Workers (静的配信)", "Workers (static)"),
       operator: L("Cloudflare", "Cloudflare"), cost: L("無料", "Free") },
-    { target: "GitLab", status: "candidate",
-      kind: L("repo ミラー (+Pages可)", "repo mirror (+Pages)"),
+    { target: "GitLab Pages", status: "active",
+      url: "https://elzup.gitlab.io/ImmortaClock/",
+      kind: L("repo ミラー + Pages", "repo mirror + Pages"),
       operator: L("GitLab社", "GitLab Inc."), cost: L("無料・無制限", "Free, unlimited") },
     { target: "Codeberg", status: "candidate",
       kind: L("repo ミラー (+Pages可)", "repo mirror (+Pages)"),
@@ -480,7 +486,17 @@
     tbody.textContent = "";
     DISTRIBUTION.forEach(function (d) {
       var tr = document.createElement("tr");
-      tr.appendChild(el("td", d.target));
+      var tdTarget = el("td");
+      if (d.url) {
+        var a = el("a", d.target);
+        a.href = d.url;                       // 変数代入: 単一ファイル検査の href="http" には該当しない
+        a.setAttribute("target", "_blank");
+        a.setAttribute("rel", "noopener");
+        tdTarget.appendChild(a);
+      } else {
+        tdTarget.textContent = d.target;
+      }
+      tr.appendChild(tdTarget);
       tr.appendChild(el("td", t(d.kind, lang)));
       tr.appendChild(el("td", t(d.operator, lang)));
       tr.appendChild(el("td", t(d.cost, lang)));

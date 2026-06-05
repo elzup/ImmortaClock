@@ -5,7 +5,14 @@
 A minimal-dependency, framework-free "long-lived" web clock. Runs as a single
 HTML file and self-diagnoses **its dependency layers and how many years it has left**.
 
-**Demo: https://elzup.github.io/ImmortaClock/**
+**Demo (independent mirrors — redundancy is the point):**
+
+- GitHub Pages: https://elzup.github.io/ImmortaClock/
+- Cloudflare Workers: https://immorta-clock.anozon.workers.dev/
+- GitLab Pages: https://elzup.gitlab.io/ImmortaClock/
+
+The same single file is served from three independent operators, so its lifespan
+is set by the longest-surviving mirror, not the shortest (see `design:hosting-redundancy`).
 
 ## Features
 

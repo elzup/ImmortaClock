@@ -1,0 +1,13 @@
+# GitLab Pages: 単一 HTML をそのまま配信する (ビルド無し)。
+# 稼働 URL: https://elzup.gitlab.io/ImmortaClock/
+pages:
+  stage: deploy
+  image: alpine:latest
+  script:
+    - mkdir -p public
+    - cp index.html public/
+  artifacts:
+    paths:
+      - public
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

@@ -74,6 +74,18 @@ test('REQ-UI-11: 配布冗長化表に GitHub Pages と状態バッジが出る'
   assert.match(doc._byId.dist.textContent, /GitHub Pages/, 'GitHub Pages 行');
   assert.match(doc._byId.dist.textContent, /稼働|予定|候補/, '状態バッジ');
 });
+test('PROP-HOST-2: 配布表に稼働先の数だけ href 付きアンカーが描画される (REQ-HOST-5)', () => {
+  const { doc, C } = boot('ja-JP');
+  const anchors = [];
+  doc._byId.dist.children.forEach((tr) => {
+    tr.children.forEach((td) => {
+      td.children.forEach((c) => { if (c.tagName === 'a' && c.href) anchors.push(c); });
+    });
+  });
+  const activeCount = C.DISTRIBUTION.filter((d) => d.status === 'active').length;
+  assert.equal(anchors.length, activeCount, '稼働先数とアンカー数が一致');
+  anchors.forEach((a) => assert.match(a.href, /^https:\/\//, 'アンカー href は https URL'));
+});
 
 // === PROP-UI-2: active の<10年は danger クラス (統合表) ===
 test('PROP-UI-2: active の<10年は danger クラス', () => {
