@@ -1,6 +1,6 @@
 # ImmortaClock
 
-[![ooparts](https://img.shields.io/badge/∅-ooparts-6a5acd)](https://github.com/elzup/ooparts-spec)
+[![ooparts](https://raw.githubusercontent.com/elzup/ooparts-spec/main/badge.svg)](https://github.com/elzup/ooparts-spec)
 
 A minimal-dependency, framework-free "long-lived" web clock. Runs as a single
 HTML file and self-diagnoses **its dependency layers and how many years it has left**.
